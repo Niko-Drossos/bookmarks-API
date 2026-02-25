@@ -1,4 +1,4 @@
-import { Plugin, Notice, SuggestModal, App } from "obsidian";
+import { Plugin, Notice, SuggestModal, App, normalizePath } from "obsidian";
 
 interface BookmarkItem {
 	type: "file" | "group";
@@ -66,20 +66,28 @@ export default class BookmarkAPI extends Plugin {
 		this.addCommand({
 			id: "add-to-bookmark-group",
 			name: "Add file to bookmark group",
-			callback: () => {
-				new GroupSuggestModal(this.app, this.getGroupNames(), async (group) => {
-					await this.addBookmark(group);
-				}).open();
+			checkCallback: (checking: boolean) => {
+				if (!this.app.workspace.getActiveFile()) return false;
+				if (!checking) {
+					new GroupSuggestModal(this.app, this.getGroupNames(), async (group) => {
+						await this.addBookmark(group);
+					}).open();
+				}
+				return true;
 			},
 		});
 
 		this.addCommand({
 			id: "remove-from-bookmark-group",
 			name: "Remove file from bookmark group",
-			callback: () => {
-				new GroupSuggestModal(this.app, this.getGroupNames(), async (group) => {
-					await this.removeBookmark(group);
-				}).open();
+			checkCallback: (checking: boolean) => {
+				if (!this.app.workspace.getActiveFile()) return false;
+				if (!checking) {
+					new GroupSuggestModal(this.app, this.getGroupNames(), async (group) => {
+						await this.removeBookmark(group);
+					}).open();
+				}
+				return true;
 			},
 		});
 	}
@@ -254,7 +262,8 @@ export default class BookmarkAPI extends Plugin {
 			}
 			return active.path;
 		}
-		return filePath.endsWith(".md") ? filePath : filePath + ".md";
+		filePath = filePath.endsWith(".md") ? filePath : filePath + ".md";
+		return normalizePath(filePath);
 	}
 
 	private getBookmarksPluginInstance(): any {
