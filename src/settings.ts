@@ -1,18 +1,18 @@
 import {App, PluginSettingTab, Setting} from "obsidian";
-import MyPlugin from "./main";
+import BookmarkApiPlugin from "./main";
 
-export interface MyPluginSettings {
+export interface BookmarkApiSettings {
 	mySetting: string;
 }
 
-export const DEFAULT_SETTINGS: MyPluginSettings = {
+export const DEFAULT_SETTINGS: BookmarkApiSettings = {
 	mySetting: 'default'
 }
 
-export class SampleSettingTab extends PluginSettingTab {
-	plugin: MyPlugin;
+export class BookmarkApiSettingTab extends PluginSettingTab {
+	plugin: BookmarkApiPlugin;
 
-	constructor(app: App, plugin: MyPlugin) {
+	constructor(app: App, plugin: BookmarkApiPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}
