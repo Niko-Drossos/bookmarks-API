@@ -117,29 +117,19 @@ export default class BookmarkAPI extends Plugin {
 		filePath = this.resolveFilePath(filePath);
 		if (!filePath) return;
 
-		const instance = this.getBookmarksPluginInstance();
-		if (instance?.items) {
-			const group = this.findOrCreateGroup(instance.items, groupName);
-			if (this.groupHasFile(group, filePath)) {
-				new Notice(`"${filePath}" is already in "${groupName}".`);
-				return;
-			}
-			const entry: BookmarkItem = { type: "file", ctime: Date.now(), path: filePath };
-			if (title) entry.title = title;
-			group.items!.push(entry);
-			instance.requestSave?.();
-		} else {
-			const data = await this.readBookmarks();
-			const group = this.findOrCreateGroup(data.items, groupName);
-			if (this.groupHasFile(group, filePath)) {
-				new Notice(`"${filePath}" is already in "${groupName}".`);
-				return;
-			}
-			const entry: BookmarkItem = { type: "file", ctime: Date.now(), path: filePath };
-			if (title) entry.title = title;
-			group.items!.push(entry);
-			await this.writeBookmarks(data);
+		const data = await this.readBookmarks();
+
+		const group = this.findOrCreateGroup(data.items, groupName);
+		if (this.groupHasFile(group, filePath)) {
+			new Notice(`"${filePath}" is already in "${groupName}".`);
+			return;
 		}
+		const entry: BookmarkItem = { type: "file", ctime: Date.now(), path: filePath };
+		if (title) entry.title = title;
+		group.items!.push(entry);
+
+		await this.writeBookmarks(data);
+		this.syncInstance(data.items);
 
 		const display = title ?? filePath;
 		new Notice(`Added "${display}" to "${groupName}".`);
@@ -149,23 +139,16 @@ export default class BookmarkAPI extends Plugin {
 		filePath = this.resolveFilePath(filePath);
 		if (!filePath) return;
 
-		const instance = this.getBookmarksPluginInstance();
-		if (instance?.items) {
-			const group = this.findGroup(instance.items, groupName);
-			if (!group || !this.removeFileFromGroup(group, filePath)) {
-				new Notice(`"${filePath}" not found in "${groupName}".`);
-				return;
-			}
-			instance.requestSave?.();
-		} else {
-			const data = await this.readBookmarks();
-			const group = this.findGroup(data.items, groupName);
-			if (!group || !this.removeFileFromGroup(group, filePath)) {
-				new Notice(`"${filePath}" not found in "${groupName}".`);
-				return;
-			}
-			await this.writeBookmarks(data);
+		const data = await this.readBookmarks();
+
+		const group = this.findGroup(data.items, groupName);
+		if (!group || !this.removeFileFromGroup(group, filePath)) {
+			new Notice(`"${filePath}" not found in "${groupName}".`);
+			return;
 		}
+
+		await this.writeBookmarks(data);
+		this.syncInstance(data.items);
 
 		new Notice(`Removed "${filePath}" from "${groupName}".`);
 	}
@@ -174,77 +157,46 @@ export default class BookmarkAPI extends Plugin {
 		filePath = this.resolveFilePath(filePath);
 		if (!filePath) return;
 
-		const instance = this.getBookmarksPluginInstance();
-		if (instance?.items) {
-			const src = this.findGroup(instance.items, fromGroup);
-			if (!src) {
-				new Notice(`Group "${fromGroup}" not found.`);
-				return;
-			}
-			const entry = this.extractFileFromGroup(src, filePath);
-			if (!entry) {
-				new Notice(`"${filePath}" not found in "${fromGroup}".`);
-				return;
-			}
-			const dest = this.findOrCreateGroup(instance.items, toGroup);
-			if (this.groupHasFile(dest, filePath)) {
-				new Notice(`"${filePath}" already exists in "${toGroup}".`);
-				return;
-			}
-			dest.items!.push(entry);
-			instance.requestSave?.();
-		} else {
-			const data = await this.readBookmarks();
-			const src = this.findGroup(data.items, fromGroup);
-			if (!src) {
-				new Notice(`Group "${fromGroup}" not found.`);
-				return;
-			}
-			const entry = this.extractFileFromGroup(src, filePath);
-			if (!entry) {
-				new Notice(`"${filePath}" not found in "${fromGroup}".`);
-				return;
-			}
-			const dest = this.findOrCreateGroup(data.items, toGroup);
-			if (this.groupHasFile(dest, filePath)) {
-				new Notice(`"${filePath}" already exists in "${toGroup}".`);
-				return;
-			}
-			dest.items!.push(entry);
-			await this.writeBookmarks(data);
+		const data = await this.readBookmarks();
+
+		const src = this.findGroup(data.items, fromGroup);
+		if (!src) {
+			new Notice(`Group "${fromGroup}" not found.`);
+			return;
 		}
+		const entry = this.extractFileFromGroup(src, filePath);
+		if (!entry) {
+			new Notice(`"${filePath}" not found in "${fromGroup}".`);
+			return;
+		}
+		const dest = this.findOrCreateGroup(data.items, toGroup);
+		if (this.groupHasFile(dest, filePath)) {
+			new Notice(`"${filePath}" already exists in "${toGroup}".`);
+			return;
+		}
+		dest.items!.push(entry);
+
+		await this.writeBookmarks(data);
+		this.syncInstance(data.items);
 
 		new Notice(`Moved "${filePath}" from "${fromGroup}" to "${toGroup}".`);
 	}
 
 	async removeBookmarkGroup(groupName: string, deleteFiles = false): Promise<void> {
-		let group: BookmarkItem | undefined;
+		const data = await this.readBookmarks();
 
-		const instance = this.getBookmarksPluginInstance();
-		if (instance?.items) {
-			const idx = instance.items.findIndex(
-				(i) => i.type === "group" && i.title === groupName
-			);
-			if (idx === -1) {
-				new Notice(`Group "${groupName}" not found.`);
-				return;
-			}
-			group = instance.items[idx];
-			instance.items.splice(idx, 1);
-			instance.requestSave?.();
-		} else {
-			const data = await this.readBookmarks();
-			const idx = data.items.findIndex(
-				(i) => i.type === "group" && i.title === groupName
-			);
-			if (idx === -1) {
-				new Notice(`Group "${groupName}" not found.`);
-				return;
-			}
-			group = data.items[idx];
-			data.items.splice(idx, 1);
-			await this.writeBookmarks(data);
+		const idx = data.items.findIndex(
+			(i) => i.type === "group" && i.title === groupName
+		);
+		if (idx === -1) {
+			new Notice(`Group "${groupName}" not found.`);
+			return;
 		}
+		const group = data.items[idx];
+		data.items.splice(idx, 1);
+
+		await this.writeBookmarks(data);
+		this.syncInstance(data.items);
 
 		if (deleteFiles && group?.items) {
 			const filePaths = group.items
@@ -265,6 +217,14 @@ export default class BookmarkAPI extends Plugin {
 	}
 
 	// ── Helpers ─────────────────────────────────────────────────
+
+	private syncInstance(items: BookmarkItem[]): void {
+		const instance = this.getBookmarksPluginInstance();
+		if (!instance?.items) return;
+		instance.items.length = 0;
+		instance.items.push(...items);
+		instance.requestSave?.();
+	}
 
 	private resolveFilePath(filePath?: string): string | null {
 		if (!filePath) {
