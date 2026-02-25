@@ -1,4 +1,4 @@
-import { Plugin, Notice, SuggestModal, App, normalizePath } from "obsidian";
+import { Plugin, Notice, SuggestModal, App, normalizePath, TFile } from "obsidian";
 
 interface BookmarkItem {
 	type: "file" | "group";
@@ -12,7 +12,14 @@ interface BookmarksData {
 	items: BookmarkItem[];
 }
 
-const BOOKMARKS_PATH = ".obsidian/bookmarks.json";
+interface BookmarksPluginInstance {
+	items: BookmarkItem[];
+	requestSave?: () => void;
+}
+
+interface InternalPlugins {
+	getPluginById?(id: string): { instance?: BookmarksPluginInstance } | undefined;
+}
 
 class GroupSuggestModal extends SuggestModal<string> {
 	groups: string[];
@@ -47,6 +54,10 @@ class GroupSuggestModal extends SuggestModal<string> {
 }
 
 export default class BookmarkAPI extends Plugin {
+	private get bookmarksPath(): string {
+		return normalizePath(`${this.app.vault.configDir}/bookmarks.json`);
+	}
+
 	async onload() {
 		const api = {
 			addBookmark: (groupName: string, filePath?: string, title?: string) =>
@@ -59,8 +70,9 @@ export default class BookmarkAPI extends Plugin {
 				this.removeBookmarkGroup(groupName, deleteFiles),
 		};
 
+		const win = window as unknown as Record<string, unknown>;
 		for (const [name, fn] of Object.entries(api)) {
-			(window as any)[name] = fn;
+			win[name] = fn;
 		}
 
 		this.addCommand({
@@ -69,8 +81,8 @@ export default class BookmarkAPI extends Plugin {
 			checkCallback: (checking: boolean) => {
 				if (!this.app.workspace.getActiveFile()) return false;
 				if (!checking) {
-					new GroupSuggestModal(this.app, this.getGroupNames(), async (group) => {
-						await this.addBookmark(group);
+					new GroupSuggestModal(this.app, this.getGroupNames(), (group) => {
+						void this.addBookmark(group);
 					}).open();
 				}
 				return true;
@@ -83,8 +95,8 @@ export default class BookmarkAPI extends Plugin {
 			checkCallback: (checking: boolean) => {
 				if (!this.app.workspace.getActiveFile()) return false;
 				if (!checking) {
-					new GroupSuggestModal(this.app, this.getGroupNames(), async (group) => {
-						await this.removeBookmark(group);
+					new GroupSuggestModal(this.app, this.getGroupNames(), (group) => {
+						void this.removeBookmark(group);
 					}).open();
 				}
 				return true;
@@ -93,8 +105,9 @@ export default class BookmarkAPI extends Plugin {
 	}
 
 	onunload() {
+		const win = window as unknown as Record<string, unknown>;
 		for (const name of ["addBookmark", "removeBookmark", "moveBookmark", "removeBookmarkGroup"]) {
-			delete (window as any)[name];
+			delete win[name];
 		}
 	}
 
@@ -210,7 +223,7 @@ export default class BookmarkAPI extends Plugin {
 		const instance = this.getBookmarksPluginInstance();
 		if (instance?.items) {
 			const idx = instance.items.findIndex(
-				(i: BookmarkItem) => i.type === "group" && i.title === groupName
+				(i) => i.type === "group" && i.title === groupName
 			);
 			if (idx === -1) {
 				new Notice(`Group "${groupName}" not found.`);
@@ -240,8 +253,8 @@ export default class BookmarkAPI extends Plugin {
 			let deleted = 0;
 			for (const path of filePaths) {
 				const file = this.app.vault.getAbstractFileByPath(path);
-				if (file) {
-					await this.app.vault.trash(file, false);
+				if (file instanceof TFile) {
+					await this.app.fileManager.trashFile(file);
 					deleted++;
 				}
 			}
@@ -266,10 +279,10 @@ export default class BookmarkAPI extends Plugin {
 		return normalizePath(filePath);
 	}
 
-	private getBookmarksPluginInstance(): any {
+	private getBookmarksPluginInstance(): BookmarksPluginInstance | null {
 		try {
-			return (this.app as any).internalPlugins
-				?.getPluginById?.("bookmarks")?.instance;
+			const app = this.app as unknown as { internalPlugins?: InternalPlugins };
+			return app.internalPlugins?.getPluginById?.("bookmarks")?.instance ?? null;
 		} catch {
 			return null;
 		}
@@ -319,8 +332,8 @@ export default class BookmarkAPI extends Plugin {
 
 	private async readBookmarks(): Promise<BookmarksData> {
 		const adapter = this.app.vault.adapter;
-		if (await adapter.exists(BOOKMARKS_PATH)) {
-			const raw = await adapter.read(BOOKMARKS_PATH);
+		if (await adapter.exists(this.bookmarksPath)) {
+			const raw = await adapter.read(this.bookmarksPath);
 			return JSON.parse(raw) as BookmarksData;
 		}
 		return { items: [] };
@@ -328,6 +341,6 @@ export default class BookmarkAPI extends Plugin {
 
 	private async writeBookmarks(data: BookmarksData): Promise<void> {
 		const raw = JSON.stringify(data, null, "\t");
-		await this.app.vault.adapter.write(BOOKMARKS_PATH, raw);
+		await this.app.vault.adapter.write(this.bookmarksPath, raw);
 	}
 }
