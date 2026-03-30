@@ -58,7 +58,7 @@ export default class BookmarkAPI extends Plugin {
 		return normalizePath(`${this.app.vault.configDir}/bookmarks.json`);
 	}
 
-	async onload() {
+	onload() {
 		const api = {
 			addBookmark: (groupName: string, filePath?: string, title?: string) =>
 				this.addBookmark(groupName, filePath, title),
@@ -226,12 +226,12 @@ export default class BookmarkAPI extends Plugin {
 		instance.requestSave?.();
 	}
 
-	private resolveFilePath(filePath?: string): string | null {
+	private resolveFilePath(filePath?: string): string | undefined {
 		if (!filePath) {
 			const active = this.app.workspace.getActiveFile();
 			if (!active) {
 				new Notice("No active file.");
-				return null;
+				return undefined;
 			}
 			return active.path;
 		}
